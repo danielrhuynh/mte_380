@@ -183,12 +183,43 @@ class RedLineDetectionAPI:
         return self.left_error, self.right_error
 
 def motor_control_callback(left_error, right_error):
-    """Example callback for motor control"""
+    """Proportional control for steering based on lane detection errors"""
     if left_error is None or right_error is None:
-        print("No lines detected - no control action")
+        print("No lines detected - stopping motors")
+        left_voltage = 0
+        right_voltage = 0
+        print(f"Motor voltages - Left: {left_voltage:.2f}V, Right: {right_voltage:.2f}V")
         return
     
-    print(f"Left error: {left_error}, Right error: {right_error}")
+    position_error = left_error - right_error
+    
+    base_voltage = 7.4
+    
+    # Proportional gain (adjust on testing)
+    Kp = 0.01
+    
+    correction = Kp * position_error
+    
+    left_voltage = base_voltage - correction
+    right_voltage = base_voltage + correction
+    
+    left_voltage = max(0, min(base_voltage, left_voltage))
+    right_voltage = max(0, min(base_voltage, right_voltage))
+    
+    print(f"Lane errors - Left: {left_error:.1f}px, Right: {right_error:.1f}px")
+    print(f"Position error: {position_error:.1f}px (Correction: {correction:.2f}V)")
+    print(f"Motor voltages - Left: {left_voltage:.2f}V, Right: {right_voltage:.2f}V")
+
+    # For visualization, also print a simple text-based indicator of steering
+    max_bars = 20
+    center = max_bars // 2
+    position = center + int(correction * 10)
+    position = max(0, min(max_bars, position))
+    
+    bar = ['|'] * (max_bars + 1)
+    bar[position] = 'X'
+    print(''.join(bar))
+    print(f"{'LEFT':<10} {'CENTER':^10} {'RIGHT':>10}")
 
 if __name__ == "__main__":
     line_detector = RedLineDetectionAPI()
