@@ -263,42 +263,73 @@ class RedLineDetectionAPI:
         return self.left_error, self.right_error
 
 # -----------------------------------
-# Motor Control Callback (Proportional Control)
+# Motor Control Callback (PID Control)
 # TUNE ME!!!
 # -----------------------------------
+# PID state variables
+prev_position_error = 0
+integral_error = 0
+last_pid_time = time.time()
+
 def motor_control_callback(left_error, right_error):
+    global prev_position_error, integral_error, last_pid_time
+    
     if left_error is None or right_error is None:
         print("No lines detected - stopping motors")
         motor1.stop()
         motor2.stop()
+        integral_error = 0
         return
     
-    # Compute a position error based on difference between left and right distances.
-    # A positive position_error means the line is shifted more to the left,
-    # requiring a correction that speeds up the right motor and slows down the left.
     position_error = left_error - right_error
     
-    base_speed = 0.5  # Base speed value (0 to 1)
-    Kp = 0.005      # Proportional gain – adjust based on testing
+    current_time = time.time()
+    dt = current_time - last_pid_time
+    last_pid_time = current_time
     
-    correction = Kp * position_error
-
-    # Adjust speeds: decrease left motor speed when correction is positive, and vice versa.
+    # Include epsilon term
+    if dt < 0.001:
+        dt = 0.001
+    
+    # PID constants - tune these values!
+    base_speed = 0.5  # Base speed value (0 to 1)
+    Kp = 0.005
+    Ki = 0.001
+    Kd = 0.002
+    
+    # Calculate P term
+    p_term = Kp * position_error
+    
+    # Calculate I term
+    integral_error += position_error * dt
+    max_integral = 100
+    integral_error = max(-max_integral, min(integral_error, max_integral))
+    i_term = Ki * integral_error
+    
+    # Calculate D term
+    derivative = (position_error - prev_position_error) / dt
+    d_term = Kd * derivative
+    prev_position_error = position_error
+    
+    # Calculate total correction
+    correction = p_term + i_term + d_term
+    
     left_speed = base_speed - correction
     right_speed = base_speed + correction
-
-    # Floor and Ceil speed between 0 and 1
+    
     left_speed = max(0, min(1, left_speed))
     right_speed = max(0, min(1, right_speed))
     
+    # Debug information
     print(f"Lane errors - Left: {left_error:.1f}px, Right: {right_error:.1f}px")
-    print(f"Position error: {position_error:.1f}px, Correction: {correction:.3f}")
+    print(f"Position error: {position_error:.1f}px")
+    print(f"P: {p_term:.3f}, I: {i_term:.3f}, D: {d_term:.3f}, Total: {correction:.3f}")
     print(f"Motor speeds - Left: {left_speed:.2f}, Right: {right_speed:.2f}")
     
     motor1.run(left_speed, forward=False)
     motor2.run(right_speed, forward=False)
     
-    # For testing visualization
+    # Visualization - for debugging in CLI
     max_bars = 20
     center = max_bars // 2
     position = center + int(correction * 10)
