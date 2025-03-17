@@ -293,9 +293,9 @@ def motor_control_callback(left_error, right_error):
     
     # PID constants - tune these values!
     base_speed = 0.5  # Base speed value (0 to 1)
-    Kp = 0.005
-    Ki = 0.001
-    Kd = 0.002
+    Kp = 0.005 # Start low and increase until the robot follows the line but starts to oscillate, back off kp to about 0.6kp at this point
+    Kd = 0.002 # Start with Kd = 0.2Kp, increase until oscillations are reduced
+    Ki = 0.001 # We really only need this if the robot fails to center on the line,, start with Ki = 0.1Kp and increase until it looks good?
     
     # Calculate P term
     p_term = Kp * position_error
