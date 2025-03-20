@@ -3,8 +3,7 @@ import numpy as np
 import os
 import time
 from threading import Thread
-from gpiozero import PWMOutputDevice, DigitalOutputDevice
-from gpiozero import Button
+from gpiozero import PWMOutputDevice, DigitalOutputDevice, Button
 
 # -----------------------------------
 # GPIO and Motor/Servo Configurations
@@ -115,6 +114,8 @@ servo = HardwarePWMServo(pwmchip=0, pwmchannel=0, period=20000000, min_duty=1500
 # then compute the midline as the average and define the error as:
 #     error = midline_x - (cropped_width/2)
 # Positive error indicates a shift to the right; negative to the left.
+# We also consider all line points now and prioritize those in the bottom region to prevent flickering error.
+# This way we will always have some point on the projected line to use for error correction.
 class RedLineDetectionAPI:
     def __init__(self, frame_width=600, frame_height=480, cropped_width=600):
         self.frame_width = frame_width      # Original image width
@@ -176,7 +177,7 @@ class RedLineDetectionAPI:
         lines_detected = False
         
         # Increase detection region for better stability
-        bottom_region_top = self.frame_height - 50  # Increased from 25 to 50 pixels
+        bottom_region_top = self.frame_height - 50
         
         if lines is not None:
             valid_bottom_points = []
@@ -247,7 +248,7 @@ class RedLineDetectionAPI:
             error = self.smooth_value(error, self.error_history, self.last_valid_error)
             self.last_valid_error = error
 
-        # Draw debugging markers:
+        # For debugging
         mid_line_int = int((leftmost_x + rightmost_x) / 2.0)
         cv.line(debug_frame, (mid_line_int, 0), (mid_line_int, self.frame_height), (255, 0, 0), 2)
         cv.circle(debug_frame, (leftmost_x, self.frame_height - 10), 5, (255, 0, 0), -1)
@@ -285,7 +286,8 @@ class RedLineDetectionAPI:
             return
         
         while True:
-            t_start = time.perf_counter()
+            # For performance testing:
+            # t_start = time.perf_counter()
             ret, frame = cap.read()
             if not ret:
                 print("End of video or error reading frame")
@@ -302,8 +304,8 @@ class RedLineDetectionAPI:
                 break
             
             t_end = time.perf_counter()
-            processing_time = t_end - t_start
             # Uncomment for performance info:
+            # processing_time = t_end - t_start
             # print(f"Frame processed in {processing_time * 1000:.2f} ms (FPS: {1/processing_time:.2f})")
         
         cap.release()
