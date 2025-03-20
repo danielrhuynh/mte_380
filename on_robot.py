@@ -113,7 +113,7 @@ servo = HardwarePWMServo(pwmchip=0, pwmchannel=0, period=20000000, min_duty=1500
 # Red Line Detection API (Refined Version)
 # -----------------------------------
 class RedLineDetectionAPI:
-    def __init__(self, frame_width=480, frame_height=480):
+    def __init__(self, frame_width=600, frame_height=480):
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.left_error = None
@@ -132,6 +132,7 @@ class RedLineDetectionAPI:
             return None, None, None, None
 
         frame = cv.resize(frame, (self.frame_width, self.frame_height))
+        frame = frame[:, :480]
         
         red_lower = np.array([0, 50, 50])
         red_upper = np.array([10, 255, 255])
