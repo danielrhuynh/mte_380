@@ -25,44 +25,6 @@ ENC_A_RIGHT = 13
 
 # Button pin (active low)
 BUTTON1 = 4
-
-# Servo configuration
-class HardwarePWMServo:
-    def __init__(self, pwmchip=0, pwmchannel=0, period=20000000, min_duty=1500000, max_duty=2000000):
-        self.pwmchip = pwmchip
-        self.pwmchannel = pwmchannel
-        self.period = period
-        self.min_duty = min_duty
-        self.max_duty = max_duty
-        self.base_path = f"/sys/class/pwm/pwmchip{self.pwmchip}"
-        self.channel_path = f"{self.base_path}/pwm{self.pwmchannel}"
-        self.export_pwm()
-        self.setup_pwm()
-
-    def export_pwm(self):
-        if not os.path.exists(self.channel_path):
-            with open(f"{self.base_path}/export", "w") as f:
-                f.write(str(self.pwmchannel))
-
-    def setup_pwm(self):
-        self.write_pwm_file("period", self.period)
-        center = int((self.min_duty + self.max_duty) / 2)
-        self.write_pwm_file("duty_cycle", center)
-        self.write_pwm_file("enable", 1)
-
-    def write_pwm_file(self, filename, value):
-        with open(f"{self.channel_path}/{filename}", "w") as f:
-            f.write(str(value))
-
-    def set_angle(self, angle):
-        if angle < 0:
-            angle = 0
-        elif angle > 180:
-            angle = 180
-        duty = int(self.min_duty + (angle / 180.0) * (self.max_duty - self.min_duty))
-        self.write_pwm_file("duty_cycle", duty)
-        print(f"Servo set to {angle}° (duty_cycle: {duty} ns)")
-
 # Motor driver remains unchanged.
 class MotorDriver:
     def __init__(self, in1_pin, in2_pin, en_pin):
@@ -72,11 +34,11 @@ class MotorDriver:
     
     def run(self, speed, forward=True):
         if forward:
-            self.in1.on()
-            self.in2.off()
-        else:
             self.in1.off()
             self.in2.on()
+        else:
+            self.in1.on()
+            self.in2.off()
         self.en.value = speed
     
     def stop(self):
@@ -105,8 +67,6 @@ encoder_left.when_pressed = left_encoder_pressed
 
 encoder_right = Button(ENC_A_RIGHT, pull_up=True, bounce_time=0.001)
 encoder_right.when_pressed = right_encoder_pressed
-
-servo = HardwarePWMServo(pwmchip=0, pwmchannel=0, period=20000000, min_duty=1500000, max_duty=2000000)
 
 # -----------------------------------
 # Red Line Detection API (Single Error Version)
@@ -338,9 +298,9 @@ def motor_control_callback(error):
         dt = 0.001
     
     # PID constants – adjust these to suit your robot.
-    base_speed = 0.25  # Base motor speed (0 to 1)
-    max_speed = 0.5
-    Kp = 0.0005      # Proportional gain
+    base_speed = 0.2  # Base motor speed (0 to 1)
+    max_speed = 0.4
+    Kp = 0.0001      # Proportional gain
     Ki = 0           # Integral gain
     Kd = 0           # Derivative gain
     
@@ -358,9 +318,9 @@ def motor_control_callback(error):
     # Apply correction: positive error means the midline is to the right,
     # so reduce the left motor speed and increase the right motor speed.
     left_speed = base_speed - correction
-    right_speed = base_speed + correction + 0.3
+    right_speed = base_speed + correction
     left_speed = max(0, min(max_speed, left_speed))
-    right_speed = max(0, min(max_speed + 0.5, right_speed))
+    right_speed = max(0, min(max_speed, right_speed))
     
     print(f"Error: {error:.2f}")
     print(f"P: {p_term:.3f}, I: {i_term:.3f}, D: {d_term:.3f}, Correction: {correction:.3f}")
