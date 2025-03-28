@@ -23,12 +23,82 @@ def clear_serial_buffer():
 # ------------------------------------------------------------
 # Default Motor/PID Parameters (values on a 0-1 scale)
 # ------------------------------------------------------------
-DEFAULT_BASE_SPEED = 160
-DEFAULT_MIN_SPEED  = -150
-DEFAULT_MAX_SPEED  = 255
-DEFAULT_KP         = 0.20
-DEFAULT_KI         = 0.05
-DEFAULT_KD         = 0.05
+# OFFSET = -140 this makes the track 1 way
+OFFSET = -100
+ANGLE_GAIN = 19
+DEFAULT_BASE_SPEED = 200
+# DEFAULT_BASE_SPEED = 175
+
+DEFAULT_MIN_SPEED  = -205
+DEFAULT_MAX_SPEED  = 205
+DEFAULT_KP         = 1 #0.6 then was 1
+# DEFAULT_KI         = 0.05
+DEFAULT_KI         = 0
+# DEFAULT_KD         = 0.1
+# DEFAULT_KD         = 0.35
+# DEFAULT_KD         = 0.2
+DEFAULT_KD         = 0.15
+
+turn_counter = 0
+
+has_seen_blue = False
+
+# -----------------------------------
+# Default DRIVE Parameters (modifiable)
+# -----------------------------------
+DRIVE_DEFAULT_TARGET_DISTANCE = -570.0    # desired distance in mm to drive
+DRIVE_DEFAULT_MAX_SPEED         = 170     # maximum PWM speed
+DRIVE_DEFAULT_MIN_SPEED         = 90     # minimum PWM speed
+DRIVE_DEFAULT_KP_DIFF           = 15     # proportional gain for difference error (wheel imbalance)
+DRIVE_DEFAULT_KI_DIFF           = 0.0     # integral gain for difference error
+DRIVE_DEFAULT_KD_DIFF           = 3     # derivative gain for difference error
+DRIVE_DEFAULT_KP_BASE           = 1.4     # gain for scaling base speed based on distance error
+
+
+TURN_DEFAULT_TARGET_DEGREES = 180.0    # degrees to turn (positive = clockwise, negative = counter-clockwise)
+TURN_DEFAULT_MAX_SPEED      = 200     # maximum PWM speed
+TURN_DEFAULT_MIN_SPEED      = 30  # minimum PWM speed
+TURN_DEFAULT_KP_DIFF        = 25   # proportional gain for difference error
+TURN_DEFAULT_KI_DIFF        = 0     # integral gain for difference error
+TURN_DEFAULT_KD_DIFF        = 15    # derivative gain for difference error
+TURN_DEFAULT_KP_BASE        = 750    # gain for scaling base speed based on distance error
+# TURN_DEFAULT_KP_BASE        = 750    # gain for scaling base speed based on distance error
+
+def send_turn_command(target_degrees, sleep_time):
+    """Format and send the TURN command over serial."""
+    command = f"TURN,{target_degrees},{TURN_DEFAULT_MAX_SPEED},{TURN_DEFAULT_MIN_SPEED},{TURN_DEFAULT_KP_DIFF},{TURN_DEFAULT_KI_DIFF},{TURN_DEFAULT_KD_DIFF},{TURN_DEFAULT_KP_BASE}\n"
+    print("Sending command:", command.strip())
+    ser.write(command.encode())
+    time.sleep(sleep_time)
+
+def send_drive_command(target_distance, sleep_time):
+    """Format and send the DRIVE command over serial."""
+    command = f"DRIVE,{target_distance},{DRIVE_DEFAULT_MAX_SPEED},{DRIVE_DEFAULT_MIN_SPEED},{DRIVE_DEFAULT_KP_DIFF},{DRIVE_DEFAULT_KI_DIFF},{DRIVE_DEFAULT_KD_DIFF},{DRIVE_DEFAULT_KP_BASE}\n"
+    # command =f"DRIVE,500,170,60,15,0.0,3,1.4\n"
+    print("Sending command:", command.strip())
+    ser.write(command.encode())
+    time.sleep(sleep_time)
+
+def send_open_command(sleep_time):
+    """Format and send the DRIVE command over serial."""
+    command = f"OPEN\n"
+    print("Sending command:", command.strip())
+    ser.write(command.encode())
+    time.sleep(sleep_time)
+
+def send_close_command(sleep_time):
+    """Format and send the DRIVE command over serial."""
+    command = f"CLOSE\no"
+    print("Sending command:", command.strip())
+    ser.write(command.encode())
+    time.sleep(sleep_time)
+
+def send_stop_command(sleep_time):
+    """Format and send the DRIVE command over serial."""
+    command = f"STOP\n"
+    print("Sending command:", command.strip())
+    ser.write(command.encode())
+    time.sleep(1)
 
 # ------------------------------------------------------------
 # (Removed) GPIO MotorDriver and Encoder Setup
@@ -37,15 +107,47 @@ DEFAULT_KD         = 0.05
 # That code has been removed so that motor control is now
 # implemented on the ESP32 via serial commands.
 
+def detect_blue_line(frame):
+    threshold_percent = 0.20 # This is the percentage of blue pixels that are detected in the frame
+    hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+    
+    blue_lower = np.array([100, 50, 50])
+    blue_upper = np.array([130, 255, 255])
+    
+    blue_mask = cv.inRange(hsv, blue_lower, blue_upper)
+    
+    # kernel = np.ones((3, 3), np.uint8)
+    # blue_mask = cv.morphologyEx(blue_mask, cv.MORPH_OPEN, kernel)
+    # blue_mask = cv.morphologyEx(blue_mask, cv.MORPH_CLOSE, kernel)
+    
+    total_pixels = frame.shape[0] * frame.shape[1]
+    blue_pixels = cv.countNonZero(blue_mask)
+    blue_percentage = (blue_pixels / total_pixels)
+
+    # print(f"Blue pixels: {blue_pixels}")
+    # print(f"total_pixels: {total_pixels}")
+    blue_detected = blue_percentage > threshold_percent
+    
+    return blue_detected
+
 # ------------------------------------------------------------
 # Red Line Detection using Bottom Crop (unchanged)
 # ------------------------------------------------------------
-def process_frame(frame, bottom_crop=100):
+def process_frame(frame, bottom_crop=200):
+    global has_seen_blue  # Ad
+    is_blue_line_detected = False
     # Resize the frame.
     frame = cv.resize(frame, (640, 480))
+    # Crop Image to remove bottom portion
+    frame = frame[:-200, :]
     height, width = frame.shape[:2]
     center_x = width // 2
 
+    if not has_seen_blue and detect_blue_line(frame):
+        print("Blue line detected")
+        is_blue_line_detected = True
+        has_seen_blue = True
+        return frame, None, 0, 0, False, is_blue_line_detected
     # Convert to HSV and threshold for red.
     hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
     red_lower = np.array([0, 50, 50])
@@ -145,7 +247,7 @@ def process_frame(frame, bottom_crop=100):
         x_bottom = int(x0 + t_bottom * vx)
         cv.line(overlay, (x_top, 0), (x_bottom, height - 1), (255, 0, 0), 2)
         # Compute error using the line's intersection at the bottom (with a camera offset, if needed).
-        error = (x_bottom - center_x) + 75  # Adjust "75" as a camera offset if necessary.
+        error = (x_bottom - center_x) + OFFSET  # Adjust "75" as a camera offset if necessary.
         # Compute the angle relative to vertical.
         angle = math.degrees(math.atan2(vx, vy))
         # Adjust angle so that right tilt is positive and left tilt negative.
@@ -170,7 +272,7 @@ def process_frame(frame, bottom_crop=100):
     cv.putText(overlay, f"Angle: {angle:.2f} deg", (10, 90),
                cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
     
-    return overlay, edges, error, angle, detected
+    return overlay, edges, error, angle, detected, is_blue_line_detected
 
 # ------------------------------------------------------------
 # New Function: Send Serial Command to ESP32
@@ -187,13 +289,14 @@ def send_serial_command(error, base_speed=DEFAULT_BASE_SPEED, min_speed=DEFAULT_
 # Main Loop: Capture Video and Send Serial Commands to ESP32
 # ------------------------------------------------------------
 def main():
+    global OFFSET
     cap = cv.VideoCapture(0)
     if not cap.isOpened():
         print("Error: Could not open video source")
         return
 
     # Set bottom_crop (in pixels) to use from the bottom of the frame.
-    bottom_crop = 100
+    bottom_crop = 300 # was 200
     # Variables to store last valid error and angle when a line was detected.
     last_valid_error = None
     last_valid_angle = None
@@ -203,8 +306,34 @@ def main():
         ret, frame = cap.read()
         if not ret:
             break
-        
-        overlay, edges, error, angle, detected = process_frame(frame, bottom_crop=bottom_crop)
+
+        overlay, edges, error, angle, detected, is_blue_line_detected = process_frame(frame, bottom_crop=bottom_crop)
+
+        if is_blue_line_detected:
+            clear_serial_buffer()
+            send_stop_command(1)
+            # time.sleep(2)
+            send_open_command(2)
+            send_drive_command(-50, 3)
+            # send_drive_command(-15, 3)
+            send_turn_command(7, 1)
+            # send_turn_command(15, 1)
+            # send_drive_command(150, 3)
+            # send_turn_command(-90, 1)
+            # time.sleep(3)
+            # send_drive_command(100, 3)
+            send_drive_command(150, 3)
+            # time.sleep(3)
+            send_close_command(2)
+            # time.sleep(3)
+            send_drive_command(-125, 3)
+            # time.sleep(3)
+            send_turn_command(270, 3)
+            # time.sleep(3)
+            clear_serial_buffer()
+            # OFFSET = 140
+            OFFSET *= -1
+            continue
         
         # If a robust line is not detected, use the last valid error and angle.
         if not detected and last_valid_error is not None:
@@ -216,8 +345,9 @@ def main():
 
         # Optionally, modify error based on the angle (if needed).
         if last_valid_angle and abs(last_valid_angle - angle) < 60:
-            if abs(angle) > 15 and abs(angle) < 70:
-                error = error + angle * 20
+            # angle was working at 20
+            if abs(angle) > 40 and abs(angle) < 70:
+                error = error + angle * ANGLE_GAIN
 
         print(f"Error: {error:.2f}, Angle: {angle:.2f} deg")
 
@@ -227,8 +357,8 @@ def main():
         # Send serial command with the current error and motor/PID parameters.
         send_serial_command(error, base_speed=DEFAULT_BASE_SPEED, min_speed=DEFAULT_MIN_SPEED,
                             max_speed=DEFAULT_MAX_SPEED, kp=DEFAULT_KP, ki=DEFAULT_KI, kd=DEFAULT_KD)
-        t_end = time.perf_counter()
-        processing_time = t_end - t_start
+        # t_end = time.perf_counter()
+        # processing_time = t_end - t_start
         # Uncomment for performance info:
         # print(f"Frame processed in {processing_time * 1000:.2f} ms (FPS: {1/processing_time:.2f})")
         

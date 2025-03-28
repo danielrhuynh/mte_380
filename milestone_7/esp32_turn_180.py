@@ -23,8 +23,8 @@ def clear_serial_buffer():
 # ------------------------------------------------------------
 # Default Motor/PID Parameters
 # ------------------------------------------------------------
-DEFAULT_KP         = 0.5
-DEFAULT_KI         = 0.5
+DEFAULT_KP         = 0.1
+DEFAULT_KI         = 0.0
 DEFAULT_KD         = 0.0
 SLIPPING_FACTOR = 2.8
 # ------------------------------------------------------------
@@ -66,7 +66,13 @@ def turn_degrees(degrees=180):
 # Turn 180 wrapper lol
 # ------------------------------------------------------------
 def turn_180_degrees():
-    return turn_degrees(180)
+    return turn_degrees(180, 1)
+
+def turn_90_degrees():
+    return turn_degrees(90)
+
+def turn_90_degrees_ccw():
+    return turn_degrees(-90)
 
 # ------------------------------------------------------------
 # Main Function
@@ -77,8 +83,9 @@ def main():
     print("Starting 180-degree turn sequence")
     
     # Perform the 180-degree turn
-    success = turn_180_degrees()
-    
+    success = turn_90_degrees()
+    # turn_90_degrees()
+
     print(f"Turn sequence {'successful' if success else 'failed'}")
 
 if __name__ == "__main__":
